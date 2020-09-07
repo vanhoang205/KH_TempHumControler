@@ -10,6 +10,8 @@ void setupAP(void);
 int testWifi(void);
 String urldecode(const char *src);
 
+Ticker secondTick;
+volatile int watchdogCount = 0;
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 BlynkTimer timer;
 DHT dht(DHTPIN, DHTTYPE);
@@ -31,17 +33,27 @@ String rsid;
 String rpass;
 boolean newSSID = false;
 
+void ISRWatchdog() {
+  watchdogCount++;
+  DPRINTF("Watchdog counter: %d\n", watchdogCount);
+  if (watchdogCount == 5) {
+    DPRINTLN();
+    DPRINTLN("the watch dog bites !!!!!");
+    ESP.reset();
+  }
+}
+
 BLYNK_CONNECTED()
 {
 
-  Serial.println(__FUNCTION__);
+  DPRINTLN(__FUNCTION__);
   Blynk.syncAll();
 }
 
 BLYNK_WRITE(V5)
 {
 
-  Serial.println(__FUNCTION__);
+  DPRINTLN(__FUNCTION__);
   temp = param.asInt();
   writeTempLcd(0, temp);
 }
@@ -49,7 +61,7 @@ BLYNK_WRITE(V5)
 BLYNK_WRITE(V6)
 {
 
-  Serial.println(__FUNCTION__);
+  DPRINTLN(__FUNCTION__);
   hum = param.asInt();
   writeHumLcd(0, hum);
 }
@@ -57,7 +69,7 @@ BLYNK_WRITE(V6)
 BLYNK_WRITE(V7)
 {
 
-  Serial.println(__FUNCTION__);
+  DPRINTLN(__FUNCTION__);
   tempSetpoint = param.asInt();
   writeTempLcd(1, tempSetpoint);
 }
@@ -65,7 +77,7 @@ BLYNK_WRITE(V7)
 BLYNK_WRITE(V8)
 {
 
-  Serial.println(__FUNCTION__);
+  DPRINTLN(__FUNCTION__);
   humSetpoint = param.asInt();
   writeHumLcd(1, humSetpoint);
 }
@@ -90,7 +102,7 @@ void sendSetpoint()
 void sendSensor()
 {
 
-  Serial.println(__FUNCTION__);
+  DPRINTLN(__FUNCTION__);
 
   temp = (uint8_t)dht.readTemperature();
   hum = (uint8_t)dht.readHumidity();
@@ -101,7 +113,7 @@ void sendSensor()
   }
   writeTempLcd(0, temp);
   writeHumLcd(0, hum);
-  Serial.printf("temp: %d - hum: %d\n", temp, hum);
+  DPRINTF("temp: %d - hum: %d\n", temp, hum);
 
   Blynk.virtualWrite(V5, temp);
   Blynk.virtualWrite(V6, hum);
@@ -150,63 +162,65 @@ void writeHumLcd(bool type, uint8_t value)
 void setup()
 {
 
+#ifdef DEBUG
   Serial.begin(57600);
   delay(10);
+#endif
 
-  Serial.println("start main() function");
+  DPRINTLN("start main() function");
 
-  Serial.println("Start Init Relay");
+  DPRINTLN("Start Init Relay");
   // pinMode(RELAY_TEMP_1, OUTPUT);
   analogWrite(A0, 255);
   pinMode(RELAY_TEMP, OUTPUT);
   pinMode(RELAY_HUM, OUTPUT);
   pinMode(RELAY_LOAD_1, OUTPUT);
   pinMode(RELAY_LOAD_2, OUTPUT);
-  Serial.println("Finish Init Relay");
+  DPRINTLN("Finish Init Relay");
 
-  Serial.println("Start Init Button");
+  DPRINTLN("Start Init Button");
   buttonTempInc.begin();
   buttonTempDec.begin();
   buttonHumInc.begin();
   buttonHumDec.begin();
-  Serial.println("Finish Init Button");
+  DPRINTLN("Finish Init Button");
 
-  Serial.println("Start Init lcd");
+  DPRINTLN("Start Init lcd");
   lcd.init();
   lcd.backlight();
   lcd.clear();
   lcd.print("Waiting ...");
-  Serial.println("Finish Init lcd");
+  DPRINTLN("Finish Init lcd");
 
-  Serial.println("Start Init DHT22");
+  DPRINTLN("Start Init DHT22");
   dht.begin();
-  Serial.println("Finish Init DHT22");
+  DPRINTLN("Finish Init DHT22");
 
 
-  Serial.println("Start Connect Blink");
+  DPRINTLN("Start Connect Blink");
   if (testWifi()) /*--- if the stored SSID and password connected successfully, exit setup ---*/
   {
     Blynk.begin(auth, WiFi.SSID().c_str(), WiFi.psk().c_str());
   }
   else /*--- otherwise, set up an access point to input SSID and password  ---*/
   {
-    Serial.println("");
-    Serial.println("Connect timed out, opening AP");
+    DPRINTLN("");
+    DPRINTLN("Connect timed out, opening AP");
     lcd.clear();
     lcd.home();
-    lcd.print("Connecting");
+    lcd.print("Connect nodemcu");
     lcd.setCursor(0, 1);
-    lcd.print("Your wifi ...");
+    lcd.print("192.168.4.1");
     setupAP();
   }
   timer.setInterval(1000L, sendSensor);
   timer.setInterval(200, sendSetpoint);
-  Serial.println("Finish Connect Blink");
+  DPRINTLN("Finish Connect Blink");
 
-  Serial.println("Finish main()");
-  Serial.println("--------------------------------");
-  Serial.println("--------------------------------");
-  Serial.println("GO TO LOOP()");
+  DPRINTLN("Finish main()");
+  DPRINTLN("--------------------------------");
+  DPRINTLN("--------------------------------");
+  DPRINTLN("GO TO LOOP()");
 
   lcd.clear();
   lcd.setCursor(0, 0);
@@ -247,18 +261,19 @@ void setup()
     lcd.setCursor(14, 0);
     lcd.print("O");
   }
+
+  secondTick.attach(1, ISRWatchdog);
 }
 
 void loop()
 {
-
   if (buttonTempInc.pressed())
   {
     if (tempSetpoint < MAX_TEMP)
     {
       tempSetpoint++;
       isUpdateTempSetpoint = true;
-      Serial.println("buttonTempInc Pressed");
+      DPRINTLN("buttonTempInc Pressed");
     }
   }
 
@@ -268,7 +283,7 @@ void loop()
     {
       tempSetpoint--;
       isUpdateTempSetpoint = true;
-      Serial.println("buttonTempDec Pressed");
+      DPRINTLN("buttonTempDec Pressed");
     }
   }
 
@@ -278,7 +293,7 @@ void loop()
     {
       humSetpoint++;
       isUpdateHumSetpoint = true;
-      Serial.println("buttonHumInc Pressed");
+      DPRINTLN("buttonHumInc Pressed");
     }
   }
 
@@ -288,7 +303,7 @@ void loop()
     {
       humSetpoint--;
       isUpdateHumSetpoint = true;
-      Serial.println("buttonHumDec Pressed");
+      DPRINTLN("buttonHumDec Pressed");
     }
   }
 
@@ -346,35 +361,41 @@ void loop()
   Blynk.run();
   timer.run();
 
+  lcd.setCursor(15, 0);
   if (!Blynk.connected()) {
-    lcd.setCursor(15, 0);
-    lcd.print("D");
-    lcd.setCursor(15, 1);
     lcd.print("D");
   }
   else {
     lcd.setCursor(15, 0);
     lcd.print(" ");
-    lcd.setCursor(15, 1);
+  }
+
+  lcd.setCursor(15, 1);
+  if (WiFi.status() != WL_CONNECTED) {
+    lcd.print("D");
+  }
+  else {
     lcd.print(" ");
   }
+
+  watchdogCount = 0;
 }
 
 /*--- auto connect with stored wifi ---*/
 int testWifi(void)
 {
   int c = 0;
-  Serial.println("Waiting for Wifi to connect");
+  DPRINTLN("Waiting for Wifi to connect");
   while (c < 20)
   {
     if (WiFi.status() == WL_CONNECTED)
     {
-      Serial.println("WiFi connected.");
-      Serial.println(WiFi.localIP());
+      DPRINTLN("WiFi connected.");
+      DPRINTLN(WiFi.localIP());
       return (1);
     }
     delay(500);
-    Serial.print(WiFi.status());
+    DPRINT(WiFi.status());
     c++;
   }
   return (0);
@@ -386,20 +407,20 @@ void setupAP(void)
   WiFi.disconnect();   //disconnect to scan wifi
   delay(100);
 
-  Serial.println("");
+  DPRINTLN("");
   delay(100);
   WiFi.softAP(APssid, APpass); //change to AP mode with AP ssid and APpass
-  Serial.println("softAP");
-  Serial.println("");
+  DPRINTLN("softAP");
+  DPRINTLN("");
   launchWeb(); //?
 }
 
 void launchWeb()
 {
-  Serial.println("");
-  Serial.println(WiFi.softAPIP());
+  DPRINTLN("");
+  DPRINTLN(WiFi.softAPIP());
   server.begin(); // Start the server
-  Serial.println("Server started");
+  DPRINTLN("Server started");
   int b = 20;
   int c = 0;
   while (b == 20)
@@ -415,7 +436,7 @@ void launchWeb()
       char pass[rpass.length()];
       rpass.toCharArray(pass, rpass.length());
 
-      Serial.println("Connecting to local Wifi");
+      DPRINTLN("Connecting to local Wifi");
       delay(500);
       WiFi.softAPdisconnect(true); //disconnet APmode
       delay(500);
@@ -430,8 +451,8 @@ void launchWeb()
       }
       else //if wrong ssid or pass
       {
-        Serial.println("");
-        Serial.println("New SSID or Password failed. Reconnect to server, and try again.");
+        DPRINTLN("");
+        DPRINTLN("New SSID or Password failed. Reconnect to server, and try again.");
         setupAP();
         return;
       }
@@ -448,8 +469,8 @@ int mdns1()
   {
     return (20);
   }
-  Serial.println("");
-  Serial.println("New client");
+  DPRINTLN("");
+  DPRINTLN("New client");
 
   // Wait for data from client to become available
   while (client.connected() && !client.available())
@@ -466,13 +487,13 @@ int mdns1()
   int addr_end = req.indexOf(' ', addr_start + 1);
   if (addr_start == -1 || addr_end == -1)
   {
-    Serial.print("Invalid request: ");
-    Serial.println(req);
+    DPRINT("Invalid request: ");
+    DPRINTLN(req);
     return (20);
   }
   req = req.substring(addr_start + 1, addr_end);
-  Serial.print("Request: ");
-  Serial.println(req);
+  DPRINT("Request: ");
+  DPRINTLN(req);
   client.flush();
   String s;
   if (req == "/")
@@ -488,19 +509,19 @@ int mdns1()
     s += "<table><tr><td>SSID:</td><td><input name='ssid' length=32></td> </tr><tr><td>PASS:</td><td><input name='pass' length=64></td> </tr></table>";
     s += "<input type='submit' style='left: 160px; position: relative;'></form>";
     s += "</html>\r\n\r\n";
-    Serial.println("Sending 200");
+    DPRINTLN("Sending 200");
   }
   else if (req.startsWith("/a?ssid="))
   {
     newSSID = true;
     String qsid;                                                  //WiFi SSID
     qsid = urldecode(req.substring(8, req.indexOf('&')).c_str()); //correct coding for spaces as "+"
-    Serial.println(qsid);
+    DPRINTLN(qsid);
     rsid = qsid;
 
     String qpass;                                                                         //Wifi Password
     qpass = urldecode(req.substring(req.indexOf('&') + 6, req.lastIndexOf(' ')).c_str()); //correct for coding spaces as "+"
-    Serial.println(qpass);
+    DPRINTLN(qpass);
     rpass = qpass;
 
     s = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\r\n<html>Temperature & Humidity Controller";
@@ -509,10 +530,10 @@ int mdns1()
   else
   {
     s = "HTTP/1.1 404 Not Found\r\n\r\n";
-    Serial.println("Sending 404");
+    DPRINTLN("Sending 404");
   }
   client.print(s);
-  Serial.println("Done with client");
+  DPRINTLN("Done with client");
   return (20);
 }
 
