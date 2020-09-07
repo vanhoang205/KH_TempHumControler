@@ -8,11 +8,12 @@ int mdns1(void);
 void launchWeb(void);
 void setupAP(void);
 int testWifi(void);
-String urldecode(const char *src);
 
+String urldecode(const char *src);
 LiquidCrystal_I2C lcd(0x27, 16, 2);
+PCF8574 pcf8574(0x20);
+SHT3X sht30(0x44);
 BlynkTimer timer;
-DHT dht(DHTPIN, DHTTYPE);
 Button buttonTempInc(INC_TEMP_BUTTON);
 Button buttonTempDec(DEC_TEMP_BUTTON);
 Button buttonHumInc(INC_HUM_BUTTON);
@@ -92,10 +93,11 @@ void sendSensor()
 
   Serial.println(__FUNCTION__);
 
-  temp = (uint8_t)dht.readTemperature();
-  hum = (uint8_t)dht.readHumidity();
-  if (isnan(temp) || isnan(hum))
-  {
+  if (sht30.get() == 0) {
+    temp = (uint8_t)sht30.cTemp;
+    hum = (uint8_t)sht30.humidity;
+  }
+  else {
     temp = 0;
     hum = 0;
   }
@@ -156,12 +158,11 @@ void setup()
   Serial.println("start main() function");
 
   Serial.println("Start Init Relay");
-  // pinMode(RELAY_TEMP_1, OUTPUT);
-  analogWrite(A0, 255);
-  pinMode(RELAY_TEMP, OUTPUT);
-  pinMode(RELAY_HUM, OUTPUT);
-  pinMode(RELAY_LOAD_1, OUTPUT);
-  pinMode(RELAY_LOAD_2, OUTPUT);
+  pcf8574.pinMode(RELAY_TEMP, OUTPUT);
+  pcf8574.pinMode(RELAY_HUM, OUTPUT);
+  pcf8574.pinMode(RELAY_LOAD_1, OUTPUT);
+  pcf8574.pinMode(RELAY_LOAD_2, OUTPUT);
+  pcf8574.begin();
   Serial.println("Finish Init Relay");
 
   Serial.println("Start Init Button");
@@ -177,11 +178,6 @@ void setup()
   lcd.clear();
   lcd.print("Waiting ...");
   Serial.println("Finish Init lcd");
-
-  Serial.println("Start Init DHT22");
-  dht.begin();
-  Serial.println("Finish Init DHT22");
-
 
   Serial.println("Start Connect Blink");
   if (testWifi()) /*--- if the stored SSID and password connected successfully, exit setup ---*/
@@ -221,8 +217,8 @@ void setup()
   lcd.print("-");
   lcd.setCursor(10, 1);
   lcd.print("L1234");
-  currentLoad1 = digitalRead(RELAY_LOAD_1);
-  currentLoad2 = digitalRead(RELAY_LOAD_2);
+  currentLoad1 = pcf8574.digitalRead(RELAY_LOAD_1);
+  currentLoad2 = pcf8574.digitalRead(RELAY_LOAD_2);
   currentLoad1 = lastLoad1;
   currentLoad2 = lastLoad2;
 
@@ -294,31 +290,31 @@ void loop()
 
   if (temp > tempSetpoint)
   {
-    digitalWrite(RELAY_TEMP, HIGH);
+    pcf8574.digitalWrite(RELAY_TEMP, HIGH);
     lcd.setCursor(11, 0);
     lcd.printf("X");
   }
   else
   {
-    digitalWrite(RELAY_TEMP, LOW);
+    pcf8574.digitalWrite(RELAY_TEMP, LOW);
     lcd.setCursor(11, 0);
     lcd.printf("O");
   }
 
   if (hum > humSetpoint)
   {
-    digitalWrite(RELAY_HUM, HIGH);
+    pcf8574.digitalWrite(RELAY_HUM, HIGH);
     lcd.setCursor(12, 0);
     lcd.printf("X");
   }
   else
   {
-    digitalWrite(RELAY_HUM, LOW);
+    pcf8574.digitalWrite(RELAY_HUM, LOW);
     lcd.setCursor(12, 0);
     lcd.printf("O");
   }
   
-  currentLoad1 = digitalRead(RELAY_LOAD_1);
+  currentLoad1 = pcf8574.digitalRead(RELAY_LOAD_1);
   if (currentLoad1 != lastLoad1){
     lastLoad1 = currentLoad1;
     lcd.setCursor(13, 0);
@@ -331,7 +327,7 @@ void loop()
   } 
 
 
-  currentLoad2 = digitalRead(RELAY_LOAD_2);
+  currentLoad2 = pcf8574.digitalRead(RELAY_LOAD_2);
   if (currentLoad2 != lastLoad2){
     lastLoad2 = currentLoad2;
     lcd.setCursor(14, 0);
