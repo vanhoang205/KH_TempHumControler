@@ -1,7 +1,7 @@
 #include "main.h"
 
 void sendSensor(void);
-void sendSetpoint(void);
+void sendStatus(void);
 void writeTempLcd(bool type, uint8_t value);
 void writeHumLcd(bool type, uint8_t value);
 int mdns1(void);
@@ -14,6 +14,8 @@ Ticker secondTick;
 volatile int watchdogCount = 0;
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 BlynkTimer timer;
+WidgetLED tempLoad(V11);
+WidgetLED humLoad(V12);
 DHT dht(DHTPIN, DHTTYPE);
 Button buttonTempInc(INC_TEMP_BUTTON);
 Button buttonTempDec(DEC_TEMP_BUTTON);
@@ -24,7 +26,9 @@ bool lastLoad1, lastLoad2;
 int temp, hum;
 int tempSetpoint, humSetpoint;
 bool isUpdateTempSetpoint, isUpdateHumSetpoint;
-char auth[] = "MUixCwOG4evgwHBERfITVy5aV0tQAmRS";
+bool currentLoadTemp, currentLoadHum;
+bool lastLoadTemp, lastLoadHum;
+char auth[] = "iL3UlMTRHQxl5IwAVbr3Bj-DD1Pu6qHD";
 
 WiFiServer server(80);
 const char *APssid = "nodemcu"; // Name of access point
@@ -81,8 +85,71 @@ BLYNK_WRITE(V8)
   humSetpoint = param.asInt();
   writeHumLcd(1, humSetpoint);
 }
-void sendSetpoint()
+
+BLYNK_WRITE(V11) {
+
+  DPRINTLN(__FUNCTION__);
+  currentLoadTemp = (bool)param.asInt();
+  lcd.setCursor(11,0);
+  if (currentLoadTemp){
+    lcd.print("X");
+  }
+  else {
+    lcd.print("O");
+  }
+  lastLoadTemp = currentLoadTemp;
+}
+
+BLYNK_WRITE(V12) {
+
+  DPRINTLN(__FUNCTION__);
+  currentLoadHum = (bool)param.asInt();
+  lcd.setCursor(12,0);
+  if (currentLoadHum){
+    lcd.print("X");
+  }
+  else {
+    lcd.print("O");
+  }
+  lastLoadHum = currentLoadHum;
+}
+
+void sendStatus()
 {
+
+  if (currentLoadTemp != lastLoadTemp) {
+    DPRINTLN("Temp Load change value");
+    if (currentLoadTemp) {
+      digitalWrite(RELAY_TEMP, HIGH);
+      lcd.setCursor(11, 0);
+      lcd.printf("X");
+      tempLoad.on();
+    }
+    else {
+      digitalWrite(RELAY_TEMP, LOW);
+      lcd.setCursor(11, 0);
+      lcd.printf("O");
+      tempLoad.off();
+    }
+    lastLoadTemp = currentLoadTemp;
+  }
+
+  if (currentLoadHum != lastLoadHum) {
+    DPRINTLN("Hum Load change value");
+    if (currentLoadHum) {
+      digitalWrite(RELAY_HUM, HIGH);
+      lcd.setCursor(12, 0);
+      lcd.printf("X");
+      humLoad.on();
+    }
+    else {
+      digitalWrite(RELAY_HUM, LOW);
+      lcd.setCursor(12, 0);
+      lcd.printf("O");
+      humLoad.off();
+    }
+    lastLoadHum = currentLoadHum;
+  }
 
   if (isUpdateTempSetpoint)
   {
@@ -200,7 +267,7 @@ void setup()
   DPRINTLN("Start Connect Blink");
   if (testWifi()) /*--- if the stored SSID and password connected successfully, exit setup ---*/
   {
-    Blynk.begin(auth, WiFi.SSID().c_str(), WiFi.psk().c_str());
+    Blynk.begin(auth, WiFi.SSID().c_str(), WiFi.psk().c_str(), IPAddress(192,168,1,50), 8080);
   }
   else /*--- otherwise, set up an access point to input SSID and password  ---*/
   {
@@ -214,7 +281,7 @@ void setup()
     setupAP();
   }
   timer.setInterval(1000L, sendSensor);
-  timer.setInterval(200, sendSetpoint);
+  timer.setInterval(200L, sendStatus);
   DPRINTLN("Finish Connect Blink");
 
   DPRINTLN("Finish main()");
@@ -309,28 +376,20 @@ void loop()
 
   if (temp > tempSetpoint)
   {
-    digitalWrite(RELAY_TEMP, HIGH);
-    lcd.setCursor(11, 0);
-    lcd.printf("X");
+    currentLoadTemp = true;
   }
   else
   {
-    digitalWrite(RELAY_TEMP, LOW);
-    lcd.setCursor(11, 0);
-    lcd.printf("O");
+    currentLoadTemp = false;
   }
 
   if (hum > humSetpoint)
   {
-    digitalWrite(RELAY_HUM, HIGH);
-    lcd.setCursor(12, 0);
-    lcd.printf("X");
+    currentLoadHum = true;
   }
   else
   {
-    digitalWrite(RELAY_HUM, LOW);
-    lcd.setCursor(12, 0);
-    lcd.printf("O");
+    currentLoadHum = false;
   }
   
   currentLoad1 = digitalRead(RELAY_LOAD_1);
@@ -338,10 +397,10 @@ void loop()
     lastLoad1 = currentLoad1;
     lcd.setCursor(13, 0);
     if (currentLoad1 == 1){
-      lcd.print("X");
+      lcd.print("O");
     }
     else {
-      lcd.print("O");
+      lcd.print("X");
     }
   } 
 
@@ -351,10 +410,10 @@ void loop()
     lastLoad2 = currentLoad2;
     lcd.setCursor(14, 0);
     if (currentLoad2 == 1){
-      lcd.print("X");
+      lcd.print("O");
     }
     else {
-      lcd.print("O");
+      lcd.print("X");
     }
   } 
 
